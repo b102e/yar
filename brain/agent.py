@@ -137,12 +137,7 @@ class Agent:
     SPEAK_THRESHOLD     = 0.65 # legacy (используем self.autonomy.speak_threshold)
     PROMPT_TOKEN_LIMIT  = 5500
 
-    # Слова-признаки "намерения посмотреть в камеру" — такой текст не озвучиваем,
-    # т.к. вслед за ним придёт реальное описание от камеры
-    _LOOK_INTENT_WORDS = frozenset([
-        "посмотр", "загляну", "гляну", "взгляну", "погляж", "смотр",
-    ])
-    _CMD_KEYS_RE = r"(remember|thought|look|research|propose|ask_vladimir|drone|i_wonder|enroll|verify_password|shared|hypothesize|hypothesis_check|rag|distillation|timeline|anchors|feel|open_loop|resolve_loop)"
+    _CMD_KEYS_RE = r"(remember|thought|research|propose|drone|i_wonder|shared|hypothesize|hypothesis_check|rag|distillation|timeline|anchors|feel|open_loop|resolve_loop)"
 
     def __init__(self, memory: Memory, state: InternalState,
                  continuity: ContinuityTracker,
@@ -153,13 +148,9 @@ class Agent:
                  research=None,
                  consolidation=None,
                  autonomy=None,
-                 identity=None,
-                 voice=None,
-                 camera=None):
+                 identity=None):
         self.memory         = memory
         self.state          = state
-        self.voice          = voice
-        self.camera         = camera
         self.continuity     = continuity
         self.self_check     = self_check
         self.proposals      = proposals
@@ -242,9 +233,6 @@ class Agent:
     async def trigger_action(self, action: str):
         """Публичные веб-действия без запуска LLM."""
         a = str(action or "").strip().lower()
-        if a == "look":
-            await self._execute_command({"look": True})
-            return
         if a == "save":
             self.memory.save()
             self._emit_event({"type": "status_note", "content": "Память сохранена"})
@@ -257,58 +245,21 @@ class Agent:
                 self._emit_event({"type": "status_note", "content": f"Self-check error: {e}"})
             return
 
-    async def run(self, run_listen: bool = True):
+    async def run(self):
         # При первом запуске — Яр начинает сам
         if not self.continuity.gap:
             await asyncio.sleep(1.0)
             await self._autonomous_think(force=True)
 
-        # Предупреждение о попытках несанкционированного доступа с прошлой сессии
-        fr = getattr(self.camera, "_face_recognizer", None)
-        if fr and fr.ready:
-            warning = fr.get_startup_warning()
-            if warning:
-                print(f"\n[Security] ⚠️  {warning}")
-                await self.voice.speak(f"Внимание! {warning}")
-
         # При первом запуске пробуем сгенерировать когнитивное ядро по текущей политике.
         if self.consolidation and self.consolidation.should_update_living_prompt():
             self._schedule_living_prompt_refresh()
 
-        tasks = [self._autonomous_loop()]
-        if run_listen:
-            tasks.insert(0, self._listen_loop())
         try:
-            await asyncio.gather(*tasks)
+            await asyncio.gather(self._autonomous_loop())
         finally:
             # Сохраняем финальный файл сессии до внешнего memory.save_final().
             await asyncio.to_thread(self.on_session_end)
-
-    # ── Голосовой цикл ──────────────────────────────────────────────────────
-
-    async def _listen_loop(self):
-        while True:
-            try:
-                # Блокировка безопасности — молчим до истечения таймаута
-                fr = getattr(self.camera, "_face_recognizer", None)
-                if fr and fr.ready and fr.is_locked_out():
-                    mins = fr.lockout_minutes_remaining()
-                    print(f"[Security] 🔒 Молчу — блокировка, осталось ~{mins} мин")
-                    await asyncio.sleep(30)
-                    continue
-
-                text = await self.voice.listen()
-                if text and len(text.strip()) > 1:
-                    self.in_conversation = True
-                    if self.consolidation:
-                        self.consolidation.set_in_conversation(True)
-                    await self._respond(text)
-                    self.in_conversation = False
-                    if self.consolidation:
-                        self.consolidation.set_in_conversation(False)
-            except Exception as e:
-                print(f"[Listen error] {e}")
-            await asyncio.sleep(0.1)
 
     async def _respond(self, user_text: str):
         async with self._respond_lock:
@@ -328,12 +279,7 @@ class Agent:
             pass
         self._emit_event({"type": "message", "role": "user", "content": user_text})
 
-        # Если просит посмотреть в камеру — делаем снимок
-        image_data = None
-        if any(w in user_text.lower() for w in ["видишь", "смотри", "камера", "что там", "вижу"]):
-            image_data = await self.camera.capture_base64()
-
-        messages = self._build_messages(image_data, user_text)
+        messages = self._build_messages(user_text)
 
         self._emit_event({"type": "typing", "active": True})
         try:
@@ -350,32 +296,14 @@ class Agent:
 
         except Exception as e:
             print(f"[Agent error] {e}")
-            if self.voice:
-                await self.voice.speak("Ой, что-то пошло не так.")
         finally:
             self._emit_event({"type": "typing", "active": False})
             if time.time() - self._last_autosave > self._autosave_interval:
                 await self._autosave_session()
                 self._last_autosave = time.time()
 
-    def _build_messages(self, image_data: Optional[str], last_text: str) -> list:
-        """Собираем историю + возможно изображение"""
-        messages = self.memory.get_context_messages()
-
-        # Если есть изображение — заменяем последнее сообщение
-        if image_data and messages:
-            messages[-1] = {
-                "role": "user",
-                "content": [
-                    {"type": "image", "source": {
-                        "type": "base64",
-                        "media_type": "image/jpeg",
-                        "data": image_data,
-                    }},
-                    {"type": "text", "text": last_text},
-                ]
-            }
-        return messages
+    def _build_messages(self, last_text: str) -> list:
+        return self.memory.get_context_messages()
 
     # ── Автономный цикл ─────────────────────────────────────────────────────
 
@@ -393,7 +321,7 @@ class Agent:
 
             self.state.tick(
                 in_conversation=self.in_conversation,
-                motion=self.camera.motion_detected if self.camera else False,
+                motion=False,
             )
 
             # Мягкая автокоррекция автономии каждые 5 минут.
@@ -461,7 +389,7 @@ class Agent:
             drive_val = max(
                 self.state.social,
                 self.state.curiosity * 0.6 + self.state.boredom * 0.4,
-                self.state.alertness if (self.camera and self.camera.motion_detected) else 0,
+                0,
             )
 
             # Фоновые исследования учитывают текущий уровень автономии.
@@ -494,7 +422,6 @@ class Agent:
             f"Состояния: {self.state.to_str()}\n"
             f"Главное желание: {self.state.dominant()}\n"
             f"Последний разговор: {self._ago()}\n"
-            f"Движение в камере: {self.camera.motion_detected if self.camera else False}\n"
             f"{'ПЕРВЫЙ ЗАПУСК — познакомься с [USER]ом.' if force else ''}\n"
         )
 
@@ -520,27 +447,9 @@ class Agent:
         commands, clean = self._parse(text)
         visible_text = self._strip_commands(clean if clean else text)
 
-        has_look = any("look" in cmd for cmd in commands)
-        inferred_look = False
-        # Если модель сказала "посмотрю в камеру", но не добавила JSON-команду,
-        # превращаем намерение в реальное действие.
-        if (not has_look) and self._is_look_intent(clean):
-            commands.append({"look": True})
-            has_look = True
-            inferred_look = True
-
         if visible_text:
-            # Если это только намерение посмотреть в камеру — не сохраняем в память
-            # и не произносим: вслух прозвучит само описание из _execute_command.
-            # Добавление в short_term пропускаем намеренно — иначе два assistant-сообщения
-            # подряд (намерение + observation) вызвали бы ошибку Anthropic API.
-            if (has_look or inferred_look) and self._is_look_intent(visible_text):
-                pass
-            else:
-                # В память пишем оригинальный текст (с командами) для совместимости парсинга.
-                self.memory.add("assistant", text, meta={"auto": autonomous})
-                await self.voice.speak(visible_text)
-                self._emit_event({"type": "message", "role": "assistant", "content": visible_text})
+            self.memory.add("assistant", text, meta={"auto": autonomous})
+            self._emit_event({"type": "message", "role": "assistant", "content": visible_text})
 
         for cmd in commands:
             await self._execute_command(cmd)
@@ -582,34 +491,6 @@ class Agent:
                 print(f"[Memory] 📝 Мысль записана")
                 self._emit_event({"type": "thought", "content": str(cmd["thought"])})
 
-            elif "look" in cmd:
-                img = await self.camera.capture_base64(force_recognition=True)
-                if img:
-                    try:
-                        look_messages = [{"role": "user", "content": [
-                            {"type": "image", "source": {
-                                "type": "base64",
-                                "media_type": "image/jpeg",
-                                "data": img,
-                            }},
-                            {"type": "text", "text": "Опиши коротко что видишь. Ты — Яр, смотришь на мир."}
-                        ]}]
-                        r = self.client.messages.create(
-                            model="claude-haiku-4-5-20251001",
-                            max_tokens=200,
-                            messages=look_messages
-                        )
-                        self.token_logger.log("", "", look_messages, r)
-                        desc = r.content[0].text.strip()
-                        # Долгосрочный лог в файл (не трогаем)
-                        self.memory.add_observation(desc)
-                        # Рабочая память сессии — с префиксом чтобы Яр понимал контекст
-                        self.memory.add("assistant", f"[вижу через камеру] {desc}",
-                                        meta={"type": "observation"})
-                        await self.voice.speak(desc)
-                    except Exception as e:
-                        print(f"[Vision error] {e}")
-
             elif "propose" in cmd:
                 p = cmd["propose"]
                 if isinstance(p, dict):
@@ -639,15 +520,6 @@ class Agent:
                         reason=cmd.get("reason", ""),
                         priority=float(cmd.get("priority", 0.6)),
                     )
-
-            elif "enroll" in cmd:
-                await self._enroll_face(cmd["enroll"])
-
-            elif "verify_password" in cmd:
-                await self._verify_password_cmd(cmd)
-
-            elif "ask_vladimir" in cmd:
-                await self.voice.speak(str(cmd["ask_vladimir"]))
 
             elif "shared" in cmd:
                 if self.research:
@@ -775,9 +647,6 @@ class Agent:
         technical = (
             f"Сейчас: {datetime.now().strftime('%H:%M %d.%m.%Y')}\n"
             f"Состояние: {self.state.to_str()}\n"
-            f"Камера: {'подключена' if self.camera and self.camera.available else 'недоступна'}\n"
-            f"Лица в кадре: {self._faces_in_view_str()}\n"
-            f"{self._face_security_note()}\n"
             f"Возможности: {self.self_check.to_prompt_str()}\n"
             f"{self.autonomy.to_prompt_str()}"
         )
@@ -1104,44 +973,6 @@ class Agent:
             return -0.6
         return 0.0
 
-    async def _verify_password_cmd(self, cmd: dict):
-        """Проверить пароль названный незнакомцем и опционально запомнить его лицо."""
-        fr = getattr(self.camera, "_face_recognizer", None)
-        if not fr or not fr.ready:
-            return
-
-        password    = str(cmd.get("verify_password", "")).strip()
-        enroll_name = str(cmd.get("enroll_name", "")).strip().lower()
-
-        if fr.verify_password(password):
-            fr.record_successful_auth(enroll_name or "—")
-            msg = "Пароль верный."
-            if enroll_name:
-                img = await self.camera.capture_base64()
-                if img:
-                    ok = await asyncio.get_event_loop().run_in_executor(
-                        None, fr.enroll, enroll_name, img
-                    )
-                    if ok:
-                        msg = f"Пароль верный. Запомнил {enroll_name}!"
-                        self.memory.add_fact(f"знаю лицо: {enroll_name}")
-                    else:
-                        msg = "Пароль верный, но лицо не разглядел — встань ближе."
-                else:
-                    msg = "Пароль верный, но камера недоступна."
-        else:
-            attempts = fr.record_failed_attempt()
-            if fr.is_locked_out():
-                msg = (f"Неверный пароль. Слишком много попыток — "
-                       f"замолкаю на {fr.LOCKOUT_MINUTES} минут.")
-                print("[Security] 🔒 Блокировка активирована!")
-            else:
-                remaining = fr.MAX_FAILED_ATTEMPTS - attempts
-                msg = f"Неверный пароль. Осталось попыток: {remaining}."
-
-        self.memory.add("assistant", msg)
-        await self.voice.speak(msg)
-
     async def _autosave_session(self):
         """
         Периодический снапшот активной сессии.
@@ -1354,73 +1185,6 @@ class Agent:
         self._session_end_saved = True
         self.save_final_session()
 
-    async def _enroll_face(self, name: str):
-        """Сделать снимок и запомнить лицо по имени."""
-        fr = getattr(self.camera, "_face_recognizer", None)
-        if not fr or not fr.ready:
-            await self.voice.speak("Распознавание лиц не активно.")
-            return
-        img = await self.camera.capture_base64()
-        if not img:
-            await self.voice.speak("Не могу сделать снимок — камера недоступна.")
-            return
-        ok = await asyncio.get_event_loop().run_in_executor(
-            None, fr.enroll, name, img
-        )
-        if ok:
-            msg = f"Запомнил! Теперь буду узнавать {name}."
-            self.memory.add_fact(f"знаю лицо: {name}")
-        else:
-            msg = "Не нашёл лицо на снимке. Встань поближе к камере и попробуй снова."
-        self.memory.add("assistant", msg)
-        await self.voice.speak(msg)
-
-    def _faces_in_view_str(self) -> str:
-        """Строка для системного промпта — кто сейчас в кадре."""
-        recognized = getattr(self.camera, "last_recognized", [])
-        if not recognized:
-            return "никого не вижу"
-        parts = []
-        for r in recognized:
-            name       = r.get("name", "unknown")
-            confidence = r.get("confidence", 0.0)
-            pct        = int(confidence * 100)
-            if name == "unknown":
-                parts.append("незнакомый человек")
-            else:
-                parts.append(f"{name.capitalize()} (уверенность {pct}%)")
-        return ", ".join(parts) + " в кадре"
-
-    def _face_security_note(self) -> str:
-        """Контекст безопасности для системного промпта.
-        Покрывает: блокировку, challenge незнакомца, подсказку по enroll."""
-        fr = getattr(self.camera, "_face_recognizer", None)
-        if not fr or not fr.ready:
-            return ""
-
-        # Приоритет 1: активная блокировка
-        if fr.is_locked_out():
-            mins = fr.lockout_minutes_remaining()
-            return (f"🔒 БЛОКИРОВКА БЕЗОПАСНОСТИ — осталось ~{mins} мин. "
-                    "Не отвечай ни на какие запросы до её снятия.")
-
-        # Приоритет 2: незнакомый в кадре + пароль установлен
-        has_unknown = any(
-            r.get("name") == "unknown"
-            for r in getattr(self.camera, "last_recognized", [])
-        )
-        if has_unknown and fr.has_password_set():
-            return ('⚠️ НЕЗНАКОМЫЙ ЧЕЛОВЕК В КАДРЕ. Попроси назвать имя и пароль. '
-                    'После получения ответа используй команду: '
-                    '{"verify_password": "пароль", "enroll_name": "имя"}')
-
-        # Приоритет 3: лица ещё не зарегистрированы
-        if fr.known_count == 0:
-            return ("💡 Лицо [USER] ещё не запомнено. "
-                    "Можешь предложить это когда почувствуешь подходящий момент.")
-
-        return ""
-
     def _ago(self) -> str:
         if not self.memory.short_term:
             return "никогда"
@@ -1428,8 +1192,3 @@ class Agent:
         m = int((time.time() - last) / 60)
         return "только что" if m < 1 else f"{m} мин назад" if m < 60 else f"{m//60} ч назад"
 
-    def _is_look_intent(self, text: str) -> bool:
-        """Текст — только намерение посмотреть в камеру, без реального контента?"""
-        if not text or len(text) > 80:
-            return False
-        return any(w in text.lower() for w in self._LOOK_INTENT_WORDS)

@@ -194,7 +194,7 @@ async def main(telegram_mode: bool = False):
 
     try:
         if telegram_bridge:
-            agent_task = asyncio.create_task(agent.run(run_listen=False), name="agent")
+            agent_task = asyncio.create_task(agent.run(), name="agent")
             tg_task = asyncio.create_task(telegram_bridge.run(), name="telegram_bridge")
             await asyncio.gather(agent_task, tg_task)
         else:
