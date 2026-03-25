@@ -4,9 +4,10 @@ import json
 
 
 class AnticipationManager:
-    def __init__(self, memory_dir: str):
+    def __init__(self, memory_dir: str, identity=None):
         self.path = Path(memory_dir) / "continuity" / "anticipation.jsonl"
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.identity = identity
 
     def build_forecast(
         self,
@@ -57,19 +58,28 @@ class AnticipationManager:
             "source": source
         }
 
-        with open(self.path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(forecast, ensure_ascii=False) + "\n")
+        with open(self.path, "ab") as f:
+            if self.identity:
+                from identity.encryption import encrypt_line
+                f.write(encrypt_line(self.identity, forecast) + b"\n")
+            else:
+                f.write(json.dumps(forecast, ensure_ascii=False).encode() + b"\n")
 
         return forecast
 
     def get_latest_forecast(self) -> dict | None:
         if not self.path.exists():
             return None
-        lines = [l.strip() for l in self.path.read_text(encoding="utf-8").splitlines() if l.strip()]
+        with open(self.path, "rb") as f:
+            lines = [l.strip() for l in f if l.strip()]
         if not lines:
             return None
         try:
-            return json.loads(lines[-1])
+            raw = lines[-1]
+            if self.identity and raw[:1] not in (b"{", b"["):
+                from identity.encryption import decrypt_line
+                return decrypt_line(self.identity, raw)
+            return json.loads(raw.decode("utf-8"))
         except Exception:
             return None
 

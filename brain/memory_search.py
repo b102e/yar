@@ -351,8 +351,12 @@ class MemorySearch:
     def _load_fallback_docs(self) -> dict:
         if self._fallback_file.exists():
             try:
-                with open(self._fallback_file, encoding="utf-8") as f:
-                    data = json.load(f)
+                if self._identity:
+                    from identity.encryption import decrypt_file
+                    data = decrypt_file(self._identity, self._fallback_file, default=[])
+                else:
+                    with open(self._fallback_file, encoding="utf-8") as f:
+                        data = json.load(f)
                 if isinstance(data, list):
                     return {d["id"]: d for d in data if isinstance(d, dict) and d.get("id")}
             except Exception as e:
@@ -361,8 +365,12 @@ class MemorySearch:
 
     def _save_fallback_docs(self) -> None:
         try:
-            with open(self._fallback_file, "w", encoding="utf-8") as f:
-                json.dump(list(self._docs.values()), f, ensure_ascii=False, indent=2)
+            if self._identity:
+                from identity.encryption import encrypt_file
+                encrypt_file(self._identity, self._fallback_file, list(self._docs.values()))
+            else:
+                with open(self._fallback_file, "w", encoding="utf-8") as f:
+                    json.dump(list(self._docs.values()), f, ensure_ascii=False, indent=2)
         except Exception as e:
             print(f"[MemorySearch] fallback save error: {e}")
 

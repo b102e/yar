@@ -6,9 +6,10 @@ import uuid
 
 
 class CognitiveProcessManager:
-    def __init__(self, memory_dir: str):
+    def __init__(self, memory_dir: str, identity=None):
         self.path = Path(memory_dir) / "continuity" / "cognitive_process.json"
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.identity = identity
         self.data = {
             "threads": [],
             "intentions": [],
@@ -22,7 +23,11 @@ class CognitiveProcessManager:
             self.save()
             return
         try:
-            raw = json.loads(self.path.read_text(encoding="utf-8"))
+            if self.identity:
+                from identity.encryption import decrypt_file
+                raw = decrypt_file(self.identity, self.path, default={})
+            else:
+                raw = json.loads(self.path.read_text(encoding="utf-8"))
             if isinstance(raw, dict):
                 self.data = {
                     "threads": raw.get("threads", []) if isinstance(raw.get("threads"), list) else [],
@@ -41,10 +46,14 @@ class CognitiveProcessManager:
 
     def save(self):
         try:
-            self.path.write_text(
-                json.dumps(self.data, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
+            if self.identity:
+                from identity.encryption import encrypt_file
+                encrypt_file(self.identity, self.path, self.data)
+            else:
+                self.path.write_text(
+                    json.dumps(self.data, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
         except Exception:
             pass
 

@@ -162,9 +162,9 @@ class Agent:
         self.identity       = identity
         self.hypotheses     = HypothesisManager(memory.memory_dir, identity=identity)
         self.open_loops     = OpenLoopManager(memory.memory_dir, identity=identity)
-        self.identity_state = IdentityStateManager(memory.memory_dir)
-        self.anticipation   = AnticipationManager(memory.memory_dir)
-        self.cognitive_process = CognitiveProcessManager(memory.memory_dir)
+        self.identity_state = IdentityStateManager(memory.memory_dir, identity=identity)
+        self.anticipation   = AnticipationManager(memory.memory_dir, identity=identity)
+        self.cognitive_process = CognitiveProcessManager(memory.memory_dir, identity=identity)
         self.timeline_search = TimelineSearch(memory.memory_dir)
         self.emotional_journal = EmotionalJournal(memory.memory_dir, identity=identity)
         self.token_logger   = TokenLogger()

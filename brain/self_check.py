@@ -17,8 +17,9 @@ from typing import Any
 
 class SelfCheck:
 
-    def __init__(self, memory_dir: Path, consolidation=None, agent=None):
+    def __init__(self, memory_dir: Path, consolidation=None, agent=None, identity=None):
         self.memory_dir = memory_dir
+        self.identity = identity
         self.results: dict = {}
         self.check_file = memory_dir / "self_check_last.json"
         self.consolidation = consolidation
@@ -241,8 +242,12 @@ class SelfCheck:
     # ── Сохранение и вывод ──────────────────────────────────────────────────
 
     def _save(self):
-        with open(self.check_file, "w", encoding="utf-8") as f:
-            json.dump(self.results, f, ensure_ascii=False, indent=2)
+        if self.identity:
+            from identity.encryption import encrypt_file
+            encrypt_file(self.identity, self.check_file, self.results)
+        else:
+            with open(self.check_file, "w", encoding="utf-8") as f:
+                json.dump(self.results, f, ensure_ascii=False, indent=2)
 
     def _print_summary(self):
         r = self.results

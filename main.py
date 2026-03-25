@@ -112,7 +112,7 @@ async def main(telegram_mode: bool = False):
     )
     memory.set_consolidation(consolidation)
     continuity  = ContinuityTracker(memory.memory_dir, identity=identity)
-    checker     = SelfCheck(memory.memory_dir, consolidation=consolidation)
+    checker     = SelfCheck(memory.memory_dir, consolidation=consolidation, identity=identity)
     proposals   = UpgradeProposals(memory.memory_dir, identity=identity)
 
     # Семантический поиск — инициализируется после Memory (читает те же файлы).

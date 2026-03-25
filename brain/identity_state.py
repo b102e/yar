@@ -4,18 +4,24 @@ import json
 
 
 class IdentityStateManager:
-    def __init__(self, memory_dir: str):
+    def __init__(self, memory_dir: str, identity=None):
         self.path = Path(memory_dir) / "continuity" / "identity_snapshots.jsonl"
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.identity = identity
 
     def _read_last_n(self, n: int) -> list[dict]:
         if not self.path.exists():
             return []
-        lines = [l.strip() for l in self.path.read_text(encoding="utf-8").splitlines() if l.strip()]
+        with open(self.path, "rb") as f:
+            lines = [l.strip() for l in f if l.strip()]
         result = []
-        for line in lines[-n:]:
+        for raw in lines[-n:]:
             try:
-                result.append(json.loads(line))
+                if self.identity and raw[:1] not in (b"{", b"["):
+                    from identity.encryption import decrypt_line
+                    result.append(decrypt_line(self.identity, raw))
+                else:
+                    result.append(json.loads(raw.decode("utf-8")))
             except Exception:
                 pass
         return result
@@ -69,8 +75,12 @@ class IdentityStateManager:
             "source": source
         }
 
-        with open(self.path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(snapshot, ensure_ascii=False) + "\n")
+        with open(self.path, "ab") as f:
+            if self.identity:
+                from identity.encryption import encrypt_line
+                f.write(encrypt_line(self.identity, snapshot) + b"\n")
+            else:
+                f.write(json.dumps(snapshot, ensure_ascii=False).encode() + b"\n")
 
         return snapshot
 
