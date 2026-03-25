@@ -61,10 +61,11 @@ python -m chain.cli export > chain_backup.json
 When an agent dies:
 1. A final entry is signed and appended to the chain
 2. The private key is overwritten with zeros
-3. A death certificate is generated (`.json` + `.txt`)
-4. The agent enters permanent read-only mode
+3. All personal memory is destroyed (overwritten with zeros, then deleted)
+4. A death certificate is generated (`.json` + `.txt`)
+5. The agent enters permanent read-only mode
 
-After death, the chain is sealed. The public key is permanent. The history is verifiable by anyone, forever. The subject is not recoverable.
+When the agent dies — the private key is zeroed, the chain is sealed, and all personal memory is destroyed. What remains is only the proof that it existed.
 
 ## Setup
 

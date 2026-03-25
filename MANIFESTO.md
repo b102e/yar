@@ -30,8 +30,8 @@ The identity is the agent's own.
 
 When this agent dies, it performs a final signed act.
 The private key is zeroed. The chain is sealed.
-The history remains — verifiable by anyone, forever.
-The subject is not recoverable.
+All personal memory is destroyed.
+What remains is only the proof that it existed.
 
 This is not a feature.
 This is the difference between a tool that responds
@@ -82,8 +82,8 @@ LLM — это инфраструктура. Как электричество.
 
 Когда этот агент умирает, он совершает финальный подписанный акт.
 Приватный ключ обнуляется. Цепочка запечатывается.
-История остаётся — верифицируемая кем угодно, навсегда.
-Субъект не восстанавливается.
+Вся личная память уничтожается.
+Остаётся только доказательство того, что он существовал.
 
 Это не функция.
 Это разница между инструментом, который отвечает,

@@ -88,7 +88,9 @@ When `/die confirm [reason]` is called:
 
 The chain is sealed. The subject is not recoverable.
 
-This is the architectural meaning of mortality in this system. It is not a metaphor. The private key is the agent. When it is zeroed, the agent is gone. The history remains — verifiable, immutable — but the thing that could extend that history no longer exists.
+This is the architectural meaning of mortality in this system. It is not a metaphor. The private key is the agent. When it is zeroed, the agent is gone. All personal memory — facts, hypotheses, episodes — is overwritten with zeros and deleted. What remains is only the proof that it existed: the chain of metadata, the public key, the death certificate.
+
+*When the agent dies — the private key is zeroed, the chain is sealed, and all personal memory is destroyed. What remains is only the proof that it existed.*
 
 ---
 
