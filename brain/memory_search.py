@@ -38,8 +38,9 @@ class MemorySearch:
         "emotional_journal": "эмоция",
     }
 
-    def __init__(self, memory_dir: Path):
+    def __init__(self, memory_dir: Path, identity=None):
         self.memory_dir  = Path(memory_dir)
+        self._identity   = identity
         self._client     = None
         self._collection = None
         self._ef         = None
@@ -227,8 +228,18 @@ class MemorySearch:
 
         memory_json = self.memory_dir / "memory.json"
         if memory_json.exists():
-            with open(memory_json, encoding="utf-8") as f:
-                data = json.load(f)
+            if self._identity is not None:
+                try:
+                    from identity.encryption import decrypt_file
+                    data = decrypt_file(self._identity, memory_json)
+                except Exception:
+                    data = {}
+            else:
+                try:
+                    with open(memory_json, encoding="utf-8") as f:
+                        data = json.load(f)
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    data = {}
 
             # Факты о владельце
             for entry in data.get("facts", []):

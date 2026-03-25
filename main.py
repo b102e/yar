@@ -117,7 +117,7 @@ async def main(telegram_mode: bool = False):
 
     # Семантический поиск — инициализируется после Memory (читает те же файлы).
     # Если chromadb/sentence-transformers не установлены — работает без них.
-    memory_search = MemorySearch(memory.memory_dir)
+    memory_search = MemorySearch(memory.memory_dir, identity=identity)
     memory.set_search(memory_search)
 
     # Эпизодическая память — при первом запуске делает bootstrap из conversations/.
