@@ -7,6 +7,8 @@
 > Every agentic system we build today is a precedent.
 > Design it with subjectivity. Design it to die.
 
+→ [Read the Manifesto](MANIFESTO.md) · [Читать манифест](MANIFESTO.md)
+
 ## What this is
 
 YAR is a Persistent Cognitive Agent with cryptographic identity.
