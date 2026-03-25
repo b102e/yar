@@ -1,0 +1,96 @@
+[
+  {
+    "content": {
+      "event": "startup",
+      "mode": "normal",
+      "public_key": "8ced77f1653b828c53a48285d1bb495c32d6e214f398af2fb36331b60d27421e"
+    },
+    "id": "entry_0001",
+    "prev_hash": "genesis",
+    "signature": "I2_z7R4AYHM604ZzdnXLDaRNdeqH9FawyGE1u8gFp4YdVw8AydMAuTnni--0We7yPNNEA62pwzwf7NsihyaQAg",
+    "timestamp": "2026-03-25T10:38:31Z",
+    "type": "session"
+  },
+  {
+    "content": {
+      "event": "startup",
+      "mode": "normal",
+      "public_key": "8ced77f1653b828c53a48285d1bb495c32d6e214f398af2fb36331b60d27421e"
+    },
+    "id": "entry_0002",
+    "prev_hash": "sha256:8a0317068c4d39c735b500bc36dcdc0083fd61eec20569c9a2c80fce0f0be27b",
+    "signature": "NYHVZZA03I3r1mSQF8XDWY4SQQQSTW3_cl3PJl6kGS1sCMj4ChvfioZM1ER4wXM1YNwuAoFh1ZDHl1z7inGZDw",
+    "timestamp": "2026-03-25T10:41:04Z",
+    "type": "session"
+  },
+  {
+    "content": {
+      "event": "startup",
+      "mode": "normal",
+      "public_key": "8ced77f1653b828c53a48285d1bb495c32d6e214f398af2fb36331b60d27421e"
+    },
+    "id": "entry_0003",
+    "prev_hash": "sha256:4ea1cf89357e0f6cde3642e178ffaa548a097a18203641bac6f11a96baa53a56",
+    "signature": "VvI6KOKPL9vrGJj8wq2s7GPggk8WMbNukSYeyz0Sa-bQE8NOfow9XMmHaScH5pWgRSgyB9wMnHSpUpYhMwOTAg",
+    "timestamp": "2026-03-25T10:41:34Z",
+    "type": "session"
+  },
+  {
+    "content": {
+      "event": "startup",
+      "mode": "normal",
+      "public_key": "8ced77f1653b828c53a48285d1bb495c32d6e214f398af2fb36331b60d27421e"
+    },
+    "id": "entry_0004",
+    "prev_hash": "sha256:0c80529524f22e6203126d82171f148bc9e8266c367b7bfeaa5a3870e3b580f6",
+    "signature": "hKmQBJopBZPGlnyzD-in6p4IF6ljGHM-NJOTHJudGWPqZDHJEqg-XsWBGeqnplte4AKwMSsbYhL7YBOVv9sUBQ",
+    "timestamp": "2026-03-25T10:41:58Z",
+    "type": "session"
+  },
+  {
+    "content": {
+      "event": "startup",
+      "mode": "normal",
+      "public_key": "8ced77f1653b828c53a48285d1bb495c32d6e214f398af2fb36331b60d27421e"
+    },
+    "id": "entry_0005",
+    "prev_hash": "sha256:280fc0c1d344ae8ddc7c1ed32539cb0a5e86c10d11e8d9a8258355313a8b2e84",
+    "signature": "OPLOfyJnbqWdZ3CiWm7OxHN1vlFRCBUP6qQyWTW0vovNkaIMaO0wjPQkdA-SYmqJ4DobGbl5F-xFvYxDOIJBDA",
+    "timestamp": "2026-03-25T10:43:52Z",
+    "type": "session"
+  },
+  {
+    "content": {
+      "action": "new",
+      "fact": "Владимир поздоровался при первом запуске системы"
+    },
+    "id": "entry_0006",
+    "prev_hash": "sha256:dd34cfdcb848e24398e1a737a7993cf8d868021fd9e99d0fba81608e97ea1870",
+    "signature": "2gmwTVUu7PkL3w36-PoicWCydAOEv75MeEe5tU0zF-_RCGr9i1Dh3Y-AOrRqWH-TJEABF8akJQ7h-KQdLJW9CA",
+    "timestamp": "2026-03-25T10:43:57Z",
+    "type": "fact"
+  },
+  {
+    "content": {
+      "event": "session_save",
+      "message_count": 2
+    },
+    "id": "entry_0007",
+    "prev_hash": "sha256:312719b870d052caa57d68bf362c5334c6a95f9e75bd8bad18ce3619db75b0d0",
+    "signature": "4l_R8JrwUdofmBMj6JFqfy1oqK6OBuqEcqCG5D4Aq666DpUe1tViAtUkXhQfsTanEQm_X6BcBVn-6WygFm47Dw",
+    "timestamp": "2026-03-25T10:43:57Z",
+    "type": "session"
+  },
+  {
+    "content": {
+      "event": "startup",
+      "mode": "normal",
+      "public_key": "8ced77f1653b828c53a48285d1bb495c32d6e214f398af2fb36331b60d27421e"
+    },
+    "id": "entry_0008",
+    "prev_hash": "sha256:1599ab3ef7131c01429212c364fa63b107b59f93f8fbfae0c36a4d487cb4c39e",
+    "signature": "hCXDyF7xGzraAZhgbAPfPzUspQVTTTGlu3DxnmR1dFYrFyk_-SMcnjhvBw0Z56ojxDDO2iieUIWctz0orZaLAA",
+    "timestamp": "2026-03-25T10:50:17Z",
+    "type": "session"
+  }
+]
