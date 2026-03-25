@@ -2,10 +2,12 @@
 Chain CLI — inspect and verify the signed memory chain without a running agent.
 
 Usage:
-  python -m chain.cli verify        verify full chain integrity
-  python -m chain.cli stats         entry count, timestamps, type breakdown
-  python -m chain.cli tail [N]      last N entries (default 10), metadata only
-  python -m chain.cli export        print full chain as formatted JSON to stdout
+  python -m chain.cli verify                             verify full chain integrity
+  python -m chain.cli verify --file FILE                 verify a snapshot export file
+  python -m chain.cli verify --file FILE --pubkey HEX   verify with explicit public key
+  python -m chain.cli stats                   entry count, timestamps, type breakdown
+  python -m chain.cli tail [N]                last N entries (default 10), metadata only
+  python -m chain.cli export                  print full chain as formatted JSON to stdout
 """
 
 import json
@@ -46,9 +48,18 @@ def _compact_ts(ts: str) -> str:
 # Commands
 # ---------------------------------------------------------------------------
 
-def cmd_verify() -> None:
-    result = verify_chain()
-    print(format_result(result))
+def cmd_verify(file_path: str | None = None, pubkey: str | None = None) -> None:
+    from pathlib import Path
+    if file_path is not None:
+        p = Path(file_path)
+        if not p.exists():
+            print(f"verify: file not found: {file_path}")
+            sys.exit(1)
+        print(f"Verifying: {p.name}")
+        result = verify_chain(chain_path=p, pubkey_hex=pubkey)
+    else:
+        result = verify_chain(pubkey_hex=pubkey)
+    print(format_result(result, pubkey_hex=pubkey))
     sys.exit(0 if result.valid else 1)
 
 
@@ -135,7 +146,21 @@ def main() -> None:
     command = args[0].lower()
 
     if command == "verify":
-        cmd_verify()
+        file_path = None
+        pubkey = None
+        if "--file" in args:
+            idx = args.index("--file")
+            if idx + 1 >= len(args):
+                print("verify: --file requires a path argument")
+                sys.exit(1)
+            file_path = args[idx + 1]
+        if "--pubkey" in args:
+            idx = args.index("--pubkey")
+            if idx + 1 >= len(args):
+                print("verify: --pubkey requires a hex string argument")
+                sys.exit(1)
+            pubkey = args[idx + 1]
+        cmd_verify(file_path, pubkey)
 
     elif command == "stats":
         cmd_stats()

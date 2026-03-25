@@ -64,9 +64,14 @@ def _load_public_key_hex() -> str | None:
         return None
 
 
-def verify_chain() -> VerifyResult:
+def verify_chain(chain_path: Path | None = None, pubkey_hex: str | None = None) -> VerifyResult:
     """
     Walk the full chain and validate every entry.
+
+    Args:
+        chain_path: path to a chain file (JSONL or exported JSON array).
+                    Defaults to the live chain at CHAIN_PATH.
+                    Pass a snapshot file to verify an export offline.
 
     Checks performed for each entry (index is 1-based in all output):
       - prev_hash integrity
@@ -75,30 +80,48 @@ def verify_chain() -> VerifyResult:
     Continues past failures to collect all errors.
     broken_at is set to the lowest 1-based index that has any error.
     """
-    # ── 0. Prerequisite: public key ────────────────────────────────────────
-    if not GENESIS_PATH.exists():
-        return VerifyResult(
-            valid=False,
-            entry_count=0,
-            first_entry=None,
-            last_entry=None,
-            broken_at=None,
-            errors=["identity/genesis.json not found — cannot verify signatures"],
-        )
+    target = Path(chain_path) if chain_path is not None else CHAIN_PATH
 
-    pub_key_hex = _load_public_key_hex()
+    # ── 0. Prerequisite: public key ────────────────────────────────────────
+    # Priority: explicit pubkey_hex > genesis.json sibling > default genesis
+    pub_key_hex: str | None = pubkey_hex
+
     if pub_key_hex is None:
-        return VerifyResult(
-            valid=False,
-            entry_count=0,
-            first_entry=None,
-            last_entry=None,
-            broken_at=None,
-            errors=["identity/genesis.json is malformed — missing public_key_hex"],
-        )
+        # For snapshot files, look for genesis.json in the same dir first
+        genesis_path = GENESIS_PATH
+        if chain_path is not None:
+            sibling = Path(chain_path).parent / "genesis.json"
+            if sibling.exists():
+                genesis_path = sibling
+
+        if not genesis_path.exists():
+            return VerifyResult(
+                valid=False,
+                entry_count=0,
+                first_entry=None,
+                last_entry=None,
+                broken_at=None,
+                errors=["identity/genesis.json not found — use --pubkey to supply the public key"],
+            )
+
+        try:
+            data = json.loads(genesis_path.read_text(encoding="utf-8"))
+            pub_key_hex = data.get("public_key_hex")
+        except (json.JSONDecodeError, OSError):
+            pub_key_hex = None
+
+        if pub_key_hex is None:
+            return VerifyResult(
+                valid=False,
+                entry_count=0,
+                first_entry=None,
+                last_entry=None,
+                broken_at=None,
+                errors=["identity/genesis.json is malformed — missing public_key_hex"],
+            )
 
     # ── 1. Empty / missing chain ────────────────────────────────────────────
-    if not CHAIN_PATH.exists() or CHAIN_PATH.stat().st_size == 0:
+    if not target.exists() or target.stat().st_size == 0:
         return VerifyResult(
             valid=True,
             entry_count=0,
@@ -107,7 +130,20 @@ def verify_chain() -> VerifyResult:
             broken_at=None,
         )
 
-    # ── 2. Walk entries ─────────────────────────────────────────────────────
+    # ── 2. Build entry iterator — supports both JSONL and exported JSON array ─
+    def _iter_entries(path: Path):
+        raw = path.read_text(encoding="utf-8").strip()
+        if raw.startswith("["):
+            # Exported JSON array (from `chain.cli export`)
+            for entry in json.loads(raw):
+                yield entry
+        else:
+            # Native JSONL format
+            for line in raw.splitlines():
+                if line.strip():
+                    yield json.loads(line)
+
+    # ── 3. Walk entries ─────────────────────────────────────────────────────
     errors: list[str] = []
     broken_at: int | None = None
     first_entry: dict | None = None
@@ -122,7 +158,7 @@ def verify_chain() -> VerifyResult:
             broken_at = idx
 
     try:
-        for idx, entry in enumerate(read_entries(), start=1):
+        for idx, entry in enumerate(_iter_entries(target), start=1):
             count = idx
             if first_entry is None:
                 first_entry = entry
@@ -173,16 +209,17 @@ def verify_chain() -> VerifyResult:
 
 _DIVIDER = "─" * 25
 
-def format_result(result: VerifyResult) -> str:
+def format_result(result: VerifyResult, pubkey_hex: str | None = None) -> str:
     """
     Format a VerifyResult for display in Telegram or a terminal.
     Returns a plain-text string with Unicode dividers.
+    pubkey_hex: if provided, shown directly (use when verifying with --pubkey)
     """
     if result.valid:
         genesis_ts = result.first_entry["timestamp"] if result.first_entry else "—"
         last_ts    = result.last_entry["timestamp"]  if result.last_entry  else "—"
 
-        pub_key_hex = _load_public_key_hex() or "unknown"
+        pub_key_hex = pubkey_hex or _load_public_key_hex() or "unknown"
         short_key = f"{pub_key_hex[:4]}...{pub_key_hex[-4:]}" if len(pub_key_hex) >= 8 else pub_key_hex
 
         lines = [
