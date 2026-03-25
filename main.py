@@ -103,7 +103,7 @@ async def main(telegram_mode: bool = False):
     # ─────────────────────────────────────────────────────────────────────────
 
     memory      = Memory(identity=identity)
-    autonomy    = AutonomyManager(memory.memory_dir)
+    autonomy    = AutonomyManager(memory.memory_dir, identity=identity)
     interest_manager = InterestManager(memory.memory_dir)
     consolidation = MemoryConsolidation(
         memory_dir=memory.memory_dir,
@@ -111,9 +111,9 @@ async def main(telegram_mode: bool = False):
         identity=identity,
     )
     memory.set_consolidation(consolidation)
-    continuity  = ContinuityTracker(memory.memory_dir)
+    continuity  = ContinuityTracker(memory.memory_dir, identity=identity)
     checker     = SelfCheck(memory.memory_dir, consolidation=consolidation)
-    proposals   = UpgradeProposals(memory.memory_dir)
+    proposals   = UpgradeProposals(memory.memory_dir, identity=identity)
 
     # Семантический поиск — инициализируется после Memory (читает те же файлы).
     # Если chromadb/sentence-transformers не установлены — работает без них.

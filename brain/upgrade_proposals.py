@@ -19,19 +19,28 @@ STATUS_APPLIED  = "applied"    # применено
 
 class UpgradeProposals:
 
-    def __init__(self, memory_dir: Path):
+    def __init__(self, memory_dir: Path, identity=None):
         self.file = memory_dir / "upgrade_proposals.json"
+        self.identity = identity
         self.proposals: list[dict] = self._load()
 
     def _load(self) -> list:
-        if self.file.exists():
-            with open(self.file, encoding="utf-8") as f:
-                return json.load(f)
-        return []
+        if not self.file.exists():
+            return []
+        if self.identity:
+            from identity.encryption import decrypt_file
+            data = decrypt_file(self.identity, self.file, default=[])
+            return data if isinstance(data, list) else []
+        with open(self.file, encoding="utf-8") as f:
+            return json.load(f)
 
     def _save(self):
-        with open(self.file, "w", encoding="utf-8") as f:
-            json.dump(self.proposals, f, ensure_ascii=False, indent=2)
+        if self.identity:
+            from identity.encryption import encrypt_file
+            encrypt_file(self.identity, self.file, self.proposals)
+        else:
+            with open(self.file, "w", encoding="utf-8") as f:
+                json.dump(self.proposals, f, ensure_ascii=False, indent=2)
 
     def propose(self, title: str, description: str,
                 category: str = "behavior",

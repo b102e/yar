@@ -18,14 +18,19 @@ class OpenLoopManager:
         "фикс готов",
     ]
 
-    def __init__(self, memory_dir: str):
+    def __init__(self, memory_dir: str, identity=None):
         self.path = Path(memory_dir) / "continuity" / "open_loops.json"
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.identity = identity
         self._load()
 
     def _load(self):
         if self.path.exists():
-            self._data = json.loads(self.path.read_text(encoding="utf-8"))
+            if self.identity:
+                from identity.encryption import decrypt_file
+                self._data = decrypt_file(self.identity, self.path, default={"loops": []})
+            else:
+                self._data = json.loads(self.path.read_text(encoding="utf-8"))
         else:
             self._data = {"loops": []}
         self._data.setdefault("loops", [])
@@ -39,7 +44,11 @@ class OpenLoopManager:
             l.setdefault("prompt_count", 0)
 
     def _save(self):
-        self.path.write_text(json.dumps(self._data, ensure_ascii=False, indent=2), encoding="utf-8")
+        if self.identity:
+            from identity.encryption import encrypt_file
+            encrypt_file(self.identity, self.path, self._data)
+        else:
+            self.path.write_text(json.dumps(self._data, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def _find_similar(self, topic: str) -> dict | None:
         topic_low = str(topic or "").lower()

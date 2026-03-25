@@ -19,8 +19,9 @@ class AutonomyManager:
         "autonomous": 0.30,
     }
 
-    def __init__(self, memory_dir: Path):
+    def __init__(self, memory_dir: Path, identity=None):
         self.path = Path(memory_dir) / "autonomy.json"
+        self.identity = identity
         self.level = self.DEFAULT_LEVEL
         self.reason = "базовый уровень при запуске"
         self.updated = datetime.now().isoformat()
@@ -31,8 +32,12 @@ class AutonomyManager:
             self._save()
             return
         try:
-            with open(self.path, encoding="utf-8") as f:
-                data = json.load(f)
+            if self.identity:
+                from identity.encryption import decrypt_file
+                data = decrypt_file(self.identity, self.path)
+            else:
+                with open(self.path, encoding="utf-8") as f:
+                    data = json.load(f)
             self.level = float(data.get("level", self.DEFAULT_LEVEL))
             self.reason = str(data.get("reason", self.reason))
             self.updated = str(data.get("updated", self.updated))
@@ -40,13 +45,17 @@ class AutonomyManager:
             pass
 
     def _save(self):
-        data = {}
-        if self.path.exists():
-            try:
-                with open(self.path, encoding="utf-8") as f:
-                    data = json.load(f)
-            except Exception:
-                data = {}
+        if self.identity:
+            from identity.encryption import decrypt_file
+            data = decrypt_file(self.identity, self.path, default={})
+        else:
+            data = {}
+            if self.path.exists():
+                try:
+                    with open(self.path, encoding="utf-8") as f:
+                        data = json.load(f)
+                except Exception:
+                    data = {}
 
         history = data.get("history", [])
         if not isinstance(history, list):
@@ -58,13 +67,18 @@ class AutonomyManager:
         })
         history = history[-50:]
 
-        with open(self.path, "w", encoding="utf-8") as f:
-            json.dump({
-                "level": self.level,
-                "reason": self.reason,
-                "updated": self.updated,
-                "history": history,
-            }, f, ensure_ascii=False, indent=2)
+        payload = {
+            "level": self.level,
+            "reason": self.reason,
+            "updated": self.updated,
+            "history": history,
+        }
+        if self.identity:
+            from identity.encryption import encrypt_file
+            encrypt_file(self.identity, self.path, payload)
+        else:
+            with open(self.path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
 
     def set(self, level: float, reason: str):
         level = max(0.0, min(1.0, round(float(level), 2)))

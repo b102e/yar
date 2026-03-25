@@ -4,10 +4,11 @@ from pathlib import Path
 
 
 class EmotionalJournal:
-    def __init__(self, memory_dir: Path):
+    def __init__(self, memory_dir: Path, identity=None):
         self.memory_dir = Path(memory_dir).expanduser()
         self.memory_dir.mkdir(parents=True, exist_ok=True)
         self.path = self.memory_dir / "emotional_journal.jsonl"
+        self.identity = identity
 
     def add_entry(self, trigger, emotion, intensity, valence, note, session_ts):
         now_iso = datetime.now().isoformat()
@@ -21,8 +22,12 @@ class EmotionalJournal:
             "note": str(note or "").strip(),
             "session_ts": str(session_ts or "").strip(),
         }
-        with open(self.path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        with open(self.path, "ab") as f:
+            if self.identity:
+                from identity.encryption import encrypt_line
+                f.write(encrypt_line(self.identity, entry) + b"\n")
+            else:
+                f.write(json.dumps(entry, ensure_ascii=False).encode() + b"\n")
 
     def get_recent(self, days: int = 7, min_intensity: float = 0.5) -> list:
         cutoff = datetime.now() - timedelta(days=max(1, int(days)))
@@ -59,13 +64,17 @@ class EmotionalJournal:
         if not self.path.exists():
             return []
         out = []
-        with open(self.path, encoding="utf-8") as f:
+        with open(self.path, "rb") as f:
             for line in f:
                 raw = line.strip()
                 if not raw:
                     continue
                 try:
-                    item = json.loads(raw)
+                    if self.identity and raw[:1] not in (b"{", b"["):
+                        from identity.encryption import decrypt_line
+                        item = decrypt_line(self.identity, raw)
+                    else:
+                        item = json.loads(raw.decode("utf-8"))
                 except Exception:
                     continue
                 if isinstance(item, dict):

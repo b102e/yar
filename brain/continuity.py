@@ -17,34 +17,45 @@ from typing import Optional
 
 
 class TemporalPatterns:
-    def __init__(self, memory_dir: Path):
+    def __init__(self, memory_dir: Path, identity=None):
         self.memory_dir = Path(memory_dir)
         self.consolidated_dir = self.memory_dir / "consolidated"
         self.consolidated_dir.mkdir(parents=True, exist_ok=True)
         self.file = self.consolidated_dir / "time_patterns.json"
+        self.identity = identity
         self.patterns = self._load()
 
     def _load(self) -> dict:
-        if self.file.exists():
-            try:
-                with open(self.file, encoding="utf-8") as f:
-                    data = json.load(f)
-                if isinstance(data, dict):
-                    return data
-            except Exception:
-                pass
-        return {
+        default = {
             "day_of_week": {},
             "month_patterns": {},
             "streak": {"current_days": 0, "avg_gap_hours": 0, "longest_streak": 0},
             "seasonal": {},
             "last_updated": None,
         }
+        if not self.file.exists():
+            return default
+        try:
+            if self.identity:
+                from identity.encryption import decrypt_file
+                data = decrypt_file(self.identity, self.file, default=default)
+            else:
+                with open(self.file, encoding="utf-8") as f:
+                    data = json.load(f)
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+        return default
 
     def _save(self) -> None:
         self.patterns["last_updated"] = datetime.now().isoformat()
-        with open(self.file, "w", encoding="utf-8") as f:
-            json.dump(self.patterns, f, ensure_ascii=False, indent=2)
+        if self.identity:
+            from identity.encryption import encrypt_file
+            encrypt_file(self.identity, self.file, self.patterns)
+        else:
+            with open(self.file, "w", encoding="utf-8") as f:
+                json.dump(self.patterns, f, ensure_ascii=False, indent=2)
 
     def get_context(self) -> str:
         # Возможны несколько инстансов (agent + consolidation) в одном процессе,
@@ -311,32 +322,41 @@ class TemporalPatterns:
 
 class ContinuityTracker:
 
-    def __init__(self, memory_dir: Path):
+    def __init__(self, memory_dir: Path, identity=None):
         self.memory_dir = memory_dir
+        self.identity = identity
         self.state_file = memory_dir / "continuity.json"
         self.bridges_file = Path(memory_dir) / "continuity" / "temporal_bridges.jsonl"
         self.bridges_file.parent.mkdir(parents=True, exist_ok=True)
-        self.temporal_patterns = TemporalPatterns(memory_dir)
+        self.temporal_patterns = TemporalPatterns(memory_dir, identity=identity)
         self._state = self._load()
         self.gap = self._calculate_gap()
         self.online = False
         self._heartbeat_task = None
 
     def _load(self) -> dict:
-        if self.state_file.exists():
-            with open(self.state_file, encoding="utf-8") as f:
-                return json.load(f)
-        return {
+        default = {
             "last_seen": None,
             "last_location": None,
             "last_ssid": None,
             "session_count": 0,
             "total_offline_minutes": 0,
         }
+        if not self.state_file.exists():
+            return default
+        if self.identity:
+            from identity.encryption import decrypt_file
+            return decrypt_file(self.identity, self.state_file, default=default)
+        with open(self.state_file, encoding="utf-8") as f:
+            return json.load(f)
 
     def _save(self):
-        with open(self.state_file, "w", encoding="utf-8") as f:
-            json.dump(self._state, f, ensure_ascii=False, indent=2)
+        if self.identity:
+            from identity.encryption import encrypt_file
+            encrypt_file(self.identity, self.state_file, self._state)
+        else:
+            with open(self.state_file, "w", encoding="utf-8") as f:
+                json.dump(self._state, f, ensure_ascii=False, indent=2)
 
     def _calculate_gap(self) -> Optional[dict]:
         """Сколько прошло с последнего сеанса"""
@@ -501,17 +521,26 @@ class ContinuityTracker:
             "bridge_summary": bridge_summary,
         }
 
-        with open(self.bridges_file, "a", encoding="utf-8") as f:
-            f.write(json.dumps(bridge, ensure_ascii=False) + "\n")
+        with open(self.bridges_file, "ab") as f:
+            if self.identity:
+                from identity.encryption import encrypt_line
+                f.write(encrypt_line(self.identity, bridge) + b"\n")
+            else:
+                f.write(json.dumps(bridge, ensure_ascii=False).encode() + b"\n")
         return bridge
 
     def get_latest_bridge(self) -> dict | None:
         if not self.bridges_file.exists():
             return None
-        lines = [l.strip() for l in self.bridges_file.read_text(encoding="utf-8").splitlines() if l.strip()]
+        with open(self.bridges_file, "rb") as f:
+            lines = [l.strip() for l in f if l.strip()]
         if not lines:
             return None
         try:
-            return json.loads(lines[-1])
+            raw = lines[-1]
+            if self.identity and raw[:1] not in (b"{", b"["):
+                from identity.encryption import decrypt_line
+                return decrypt_line(self.identity, raw)
+            return json.loads(raw.decode("utf-8"))
         except Exception:
             return None

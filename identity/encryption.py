@@ -7,6 +7,7 @@ two uses: signing (Ed25519) and encryption (XSalsa20-Poly1305 via NaCl).
 The derived key never appears in logs or chain entries.
 """
 
+import base64
 import hashlib
 import json
 from pathlib import Path
@@ -75,3 +76,24 @@ def decrypt_file(identity, path: Path, default=None) -> dict:
         return decrypt_json(identity, raw)
     except Exception:
         return default
+
+
+def encrypt_line(identity, data: dict) -> bytes:
+    """
+    Encrypt a dict to a single base64-encoded byte string (no newline).
+    Safe for JSONL format — base64 output never contains newlines.
+    """
+    encrypted = encrypt_json(identity, data)
+    return base64.b64encode(encrypted)
+
+
+def decrypt_line(identity, raw: bytes) -> dict:
+    """
+    Decrypt a single base64-encoded JSONL line to dict.
+    Migration: if line starts with '{' or '[' it is legacy plaintext.
+    """
+    raw = raw.strip()
+    if raw[:1] in (b"{", b"["):
+        return json.loads(raw.decode("utf-8"))
+    encrypted = base64.b64decode(raw)
+    return decrypt_json(identity, encrypted)
