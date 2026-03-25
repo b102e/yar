@@ -350,7 +350,8 @@ class Agent:
 
         except Exception as e:
             print(f"[Agent error] {e}")
-            await self.voice.speak("Ой, что-то пошло не так.")
+            if self.voice:
+                await self.voice.speak("Ой, что-то пошло не так.")
         finally:
             self._emit_event({"type": "typing", "active": False})
             if time.time() - self._last_autosave > self._autosave_interval:
@@ -392,7 +393,7 @@ class Agent:
 
             self.state.tick(
                 in_conversation=self.in_conversation,
-                motion=self.camera.motion_detected,
+                motion=self.camera.motion_detected if self.camera else False,
             )
 
             # Мягкая автокоррекция автономии каждые 5 минут.
@@ -460,7 +461,7 @@ class Agent:
             drive_val = max(
                 self.state.social,
                 self.state.curiosity * 0.6 + self.state.boredom * 0.4,
-                self.state.alertness if self.camera.motion_detected else 0,
+                self.state.alertness if (self.camera and self.camera.motion_detected) else 0,
             )
 
             # Фоновые исследования учитывают текущий уровень автономии.
@@ -493,7 +494,7 @@ class Agent:
             f"Состояния: {self.state.to_str()}\n"
             f"Главное желание: {self.state.dominant()}\n"
             f"Последний разговор: {self._ago()}\n"
-            f"Движение в камере: {self.camera.motion_detected}\n"
+            f"Движение в камере: {self.camera.motion_detected if self.camera else False}\n"
             f"{'ПЕРВЫЙ ЗАПУСК — познакомься с [USER]ом.' if force else ''}\n"
         )
 
@@ -774,7 +775,7 @@ class Agent:
         technical = (
             f"Сейчас: {datetime.now().strftime('%H:%M %d.%m.%Y')}\n"
             f"Состояние: {self.state.to_str()}\n"
-            f"Камера: {'подключена' if self.camera.available else 'недоступна'}\n"
+            f"Камера: {'подключена' if self.camera and self.camera.available else 'недоступна'}\n"
             f"Лица в кадре: {self._faces_in_view_str()}\n"
             f"{self._face_security_note()}\n"
             f"Возможности: {self.self_check.to_prompt_str()}\n"
