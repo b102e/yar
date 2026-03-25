@@ -1,0 +1,16 @@
+[Unit]
+Description=YAR Cryptographic Agent
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/yar
+ExecStart=/usr/bin/python3 main.py --telegram
+Restart=on-failure
+RestartSec=10
+EnvironmentFile=/root/yar/.env
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
