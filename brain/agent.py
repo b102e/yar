@@ -169,7 +169,7 @@ class Agent:
         self.consolidation  = consolidation
         self.autonomy       = autonomy or AutonomyManager(memory.memory_dir)
         self.identity       = identity
-        self.hypotheses     = HypothesisManager(memory.memory_dir)
+        self.hypotheses     = HypothesisManager(memory.memory_dir, identity=identity)
         self.open_loops     = OpenLoopManager(memory.memory_dir)
         self.identity_state = IdentityStateManager(memory.memory_dir)
         self.anticipation   = AnticipationManager(memory.memory_dir)

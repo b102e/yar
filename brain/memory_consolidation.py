@@ -41,7 +41,7 @@ class MemoryConsolidation:
         self.interest_manager = interest_manager
         self.identity = identity
         self.temporal_patterns = TemporalPatterns(self.memory_dir)
-        self.hypothesis_manager = HypothesisManager(self.memory_dir)
+        self.hypothesis_manager = HypothesisManager(self.memory_dir, identity=identity)
         self.emotional_journal = EmotionalJournal(self.memory_dir)
         try:
             self.open_loops = OpenLoopManager(str(self.memory_dir))
@@ -482,8 +482,7 @@ class MemoryConsolidation:
 
     def _save_cognitive_core(self, core: dict):
         self._backup_before_overwrite(self.cognitive_core_file)
-        with open(self.cognitive_core_file, "w", encoding="utf-8") as f:
-            json.dump(core, f, ensure_ascii=False, indent=2)
+        self._save_json(self.cognitive_core_file, core)
 
     def get_cognitive_core(self) -> Optional[str]:
         if not self.cognitive_core_file.exists():
@@ -1736,20 +1735,28 @@ class MemoryConsolidation:
         except Exception:
             return None
 
-    @staticmethod
-    def _load_json(path: Path, default: Any):
-        if path.exists():
+    def _load_json(self, path: Path, default: Any):
+        if not path.exists():
+            return default
+        if self.identity:
             try:
-                with open(path, encoding="utf-8") as f:
-                    return json.load(f)
+                from identity.encryption import decrypt_file
+                return decrypt_file(self.identity, path, default=default)
             except Exception:
                 return default
-        return default
+        try:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return default
 
-    @staticmethod
-    def _save_json(path: Path, data: Any):
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+    def _save_json(self, path: Path, data: Any):
+        if self.identity:
+            from identity.encryption import encrypt_file
+            encrypt_file(self.identity, path, data)
+        else:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
 
     def _backup_before_overwrite(self, path: Path):
         if not path.exists():

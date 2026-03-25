@@ -56,10 +56,14 @@ class Memory:
     def _load(self) -> dict:
         path = self.memory_dir / "memory.json"
         if path.exists():
-            with open(path, encoding="utf-8") as f:
-                data = json.load(f)
-                print(f"✅ Память загружена: {path}")
-                return data
+            if self.identity:
+                from identity.encryption import decrypt_file
+                data = decrypt_file(self.identity, path)
+            else:
+                with open(path, encoding="utf-8") as f:
+                    data = json.load(f)
+            print(f"✅ Память загружена: {path}")
+            return data
         print(f"🆕 Новая память создана: {path}")
         return {
             "owner_name": "[USER]",
@@ -367,8 +371,7 @@ class Memory:
         self.long_term.setdefault("mood_history", [])
         self.long_term["mood_history"].append(entry)
         self.long_term["mood_history"] = self.long_term["mood_history"][-2000:]
-        with open(self.memory_dir / "memory.json", "w", encoding="utf-8") as f:
-            json.dump(self.long_term, f, ensure_ascii=False, indent=2)
+        self._write_memory_json()
 
         # mood_history.jsonl
         path = self.memory_dir / "mood_history.jsonl"
@@ -523,8 +526,13 @@ class Memory:
         return '\n'.join(lines).strip()
 
     def _write_memory_json(self) -> None:
-        with open(self.memory_dir / "memory.json", "w", encoding="utf-8") as f:
-            json.dump(self.long_term, f, ensure_ascii=False, indent=2)
+        path = self.memory_dir / "memory.json"
+        if self.identity:
+            from identity.encryption import encrypt_file
+            encrypt_file(self.identity, path, self.long_term)
+        else:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(self.long_term, f, ensure_ascii=False, indent=2)
 
     def _migrate_fact_lifecycle_schema(self) -> None:
         if not self.lifecycle:

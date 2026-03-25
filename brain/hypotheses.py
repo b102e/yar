@@ -16,9 +16,10 @@ class HypothesisManager:
     CONFIRM_THRESHOLD = 0.75
     REJECT_THRESHOLD = 0.25
 
-    def __init__(self, memory_dir: Path):
+    def __init__(self, memory_dir: Path, identity=None):
         self.memory_dir = Path(memory_dir)
         self.path = self.memory_dir / "hypotheses.jsonl"
+        self.identity = identity
 
     def add(self, hypothesis: str, initial_confidence: float = 0.5,
             source: str = "observation") -> str:
@@ -55,8 +56,13 @@ class HypothesisManager:
             "resolved_at": None,
             "resolved_reason": None,
         }
-        with open(self.path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        if self.identity:
+            from identity.encryption import encrypt_json
+            with open(self.path, "ab") as f:
+                f.write(encrypt_json(self.identity, entry) + b"\n")
+        else:
+            with open(self.path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
         print(f"[Hypothesis] 💭 Новая гипотеза: {text[:80]}")
         return hid
@@ -178,18 +184,40 @@ class HypothesisManager:
         if not self.path.exists():
             return []
         out = []
-        with open(self.path, encoding="utf-8") as f:
-            for line in f:
-                raw = line.strip()
-                if not raw:
-                    continue
-                try:
-                    out.append(json.loads(raw))
-                except Exception:
-                    continue
+        if self.identity:
+            from identity.encryption import decrypt_json
+            with open(self.path, "rb") as f:
+                for line in f:
+                    raw = line.strip()
+                    if not raw:
+                        continue
+                    try:
+                        # Migration: legacy plaintext line
+                        if raw[:1] == b"{":
+                            out.append(json.loads(raw.decode("utf-8")))
+                        else:
+                            out.append(decrypt_json(self.identity, raw))
+                    except Exception:
+                        continue
+        else:
+            with open(self.path, encoding="utf-8") as f:
+                for line in f:
+                    raw = line.strip()
+                    if not raw:
+                        continue
+                    try:
+                        out.append(json.loads(raw))
+                    except Exception:
+                        continue
         return out
 
     def _save_all(self, entries: list[dict]):
-        with open(self.path, "w", encoding="utf-8") as f:
-            for e in entries:
-                f.write(json.dumps(e, ensure_ascii=False) + "\n")
+        if self.identity:
+            from identity.encryption import encrypt_json
+            with open(self.path, "wb") as f:
+                for e in entries:
+                    f.write(encrypt_json(self.identity, e) + b"\n")
+        else:
+            with open(self.path, "w", encoding="utf-8") as f:
+                for e in entries:
+                    f.write(json.dumps(e, ensure_ascii=False) + "\n")

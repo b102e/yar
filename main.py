@@ -122,7 +122,8 @@ async def main(telegram_mode: bool = False):
 
     # Эпизодическая память — при первом запуске делает bootstrap из conversations/.
     episodic = EpisodicMemory(memory.memory_dir,
-                              api_key=os.environ["ANTHROPIC_API_KEY"])
+                              api_key=os.environ["ANTHROPIC_API_KEY"],
+                              identity=identity)
     memory.set_episodic(episodic)
 
     # Автономный исследователь — изучает темы в фоне между разговорами.
