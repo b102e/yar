@@ -144,3 +144,10 @@ WantedBy=multi-user.target
 | `TELEGRAM_ALLOWED_CHAT_ID` | No | Comma-separated chat IDs (whitelist) |
 | `AGENT_DIR` | No | Override chain directory (default: `~/.agent`) |
 | `AGENT_IDENTITY_DIR` | No | Override identity directory (default: `~/.agent/identity`) |
+
+## License
+
+Business Source License 1.1 — free for individuals,
+researchers, and companies under $1M revenue/funding.
+Converts to MIT on 2030-03-25.
+Commercial licensing: open an issue.

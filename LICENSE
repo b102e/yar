@@ -1,0 +1,23 @@
+Business Source License 1.1
+
+Licensor: Vladimir Vasilenko
+Licensed Work: YAR — Cryptographic Subject
+Change Date: 2030-03-25
+Change License: MIT
+
+Use Limitation:
+The Licensed Work may not be used in production by any entity
+with annual revenue or total funding exceeding $1,000,000 USD,
+without a separate commercial license from the Licensor.
+
+For commercial licensing: github.com/b102e/yar/issues
+
+Additional use grant:
+You may use the Licensed Work for research, education,
+personal use, and open source projects without limitation,
+regardless of revenue.
+
+---
+
+For full license text see:
+https://mariadb.com/bsl11/
