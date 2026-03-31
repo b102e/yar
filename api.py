@@ -201,6 +201,16 @@ class MessageResponse(BaseModel):
     player_id: str
 
 
+class DieRequest(BaseModel):
+    confirm: bool
+    reason: str = ""
+
+
+class DieResponse(BaseModel):
+    certificate: str
+    player_id: str
+
+
 async def _ask_agent(agent: Agent, message: str) -> str:
     loop = asyncio.get_running_loop()
     response_future: asyncio.Future[str] = loop.create_future()
@@ -278,6 +288,52 @@ async def health():
         "auth": bool(_access_password()),
         "sessions": len(_sessions),
     }
+
+
+
+@app.post("/v1/die", response_model=DieResponse)
+async def agent_die(req: DieRequest, authorization: str | None = Header(default=None)):
+    if not req.confirm:
+        raise HTTPException(status_code=400, detail="confirm must be true to execute death protocol")
+
+    player_id = _get_player_from_auth(authorization)
+    pid = _safe_player_id(player_id)
+
+    identity = load_or_create()
+    if identity.is_dead():
+        raise HTTPException(status_code=409, detail="agent is already dead")
+
+    agent = _agents.get(pid)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="no active agent for this player")
+
+    lock = _agent_locks.get(pid)
+    async def _run_die():
+        from lifecycle.die import die
+        return die(identity, reason=req.reason or "", memory=agent.memory)
+
+    loop = asyncio.get_running_loop()
+    try:
+        if lock:
+            async with lock:
+                cert_path = await loop.run_in_executor(None, lambda: __import__("lifecycle.die", fromlist=["die"]).die(identity, reason=req.reason or "", memory=agent.memory))
+        else:
+            cert_path = await loop.run_in_executor(None, lambda: __import__("lifecycle.die", fromlist=["die"]).die(identity, reason=req.reason or "", memory=agent.memory))
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # Remove dead agent from cache
+    _agents.pop(pid, None)
+    _agent_locks.pop(pid, None)
+
+    try:
+        cert_txt = cert_path.with_suffix(".txt").read_text(encoding="utf-8")
+    except Exception:
+        cert_txt = "Death protocol complete. Certificate not readable."
+
+    return DieResponse(certificate=cert_txt, player_id=player_id)
 
 
 if __name__ == "__main__":

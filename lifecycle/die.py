@@ -35,16 +35,9 @@ from pathlib import Path
 # Files and directories containing personal user data.
 # chain.jsonl is NOT here — it contains only structural metadata.
 # genesis.json and public.key are NOT here — needed for verification.
-_MEMORY_PATHS = [
-    "~/claude-memory/memory.json",
-    "~/claude-memory/cognitive_core.json",
-    "~/claude-memory/hypotheses.json",
-    "~/claude-memory/episodic_memory/",
-    "~/claude-memory/emotional_journal/",
-    "~/claude-memory/open_loops.json",
-    "~/claude-memory/continuity.json",
-    "~/claude-memory/upgrade_proposals.json",
-    "~/claude-memory/token_log/",
+# Legacy paths kept for older installs.
+_MEMORY_PATHS_LEGACY = [
+    "~/claude-memory/",
 ]
 
 
@@ -195,7 +188,11 @@ def die(identity, reason: str = "", memory=None) -> Path:
     # ── 4. Destroy personal memory ────────────────────────────────────────────
     print("[Die] Destroying personal memory...")
     destroyed_count = 0
-    for p_str in _MEMORY_PATHS:
+    # Actual player memory: ~/.agent/players/
+    players_dir = agent_dir / "players"
+    destroyed_count += _secure_delete(players_dir)
+    # Legacy paths
+    for p_str in _MEMORY_PATHS_LEGACY:
         destroyed_count += _secure_delete(Path(p_str).expanduser())
     print(f"[Die] Personal memory destroyed ({destroyed_count} files).")
 
