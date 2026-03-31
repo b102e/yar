@@ -1,3 +1,4 @@
+https://github.com/b102e/yar/blob/main/docs/death-certificate-screen.png
 # YAR — Cryptographic Subject
 
 > Superintelligence may develop subjectivity on its own.
