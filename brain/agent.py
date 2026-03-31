@@ -827,6 +827,18 @@ class Agent:
         if bridge_summary:
             working_val = working_val.replace(bridge_summary, "").strip() or "—"
 
+        # --- build open_loops string ---
+        try:
+            _loops = self.open_loops.get_active_loops(limit=5) if hasattr(self, "open_loops") else []
+            if _loops:
+                open_loops_str = "\n".join(
+                    f"· [{l.get('importance','?')}] {l.get('topic','')}" for l in _loops
+                )
+            else:
+                open_loops_str = "нет"
+        except Exception:
+            open_loops_str = "—"
+
         def _build_prompt(wm: str) -> str:
             return SYSTEM_PROMPT_TEMPLATE.format(
                 long_term=long_term_val,
@@ -839,6 +851,9 @@ class Agent:
                 technical=technical,
                 proposals=proposals,
                 hypotheses=hypotheses_str,
+                open_loops=open_loops_str,
+                internal_state=self.state.to_str(),
+                autonomy_level=f"{self.autonomy.level:.1f}",
             )
 
         prompt = _build_prompt(working_val)
