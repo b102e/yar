@@ -267,6 +267,60 @@ async def send_message(req: MessageRequest, authorization: str | None = Header(d
         if player_id != token_player_id:
             raise HTTPException(status_code=403, detail="player_id mismatch")
 
+        # ── /die command ─────────────────────────────────────────────────────
+        msg_lower = message.lower()
+        if msg_lower.startswith("/die"):
+            args = message[4:].strip()
+            args_lower = args.lower()
+            if not args_lower.startswith("confirm"):
+                return MessageResponse(
+                    response=(
+                        "Это необратимое действие.\n\n"
+                        "Агент запишет финальную подписанную запись, уничтожит приватный ключ "
+                        "и сотрёт всю личную память о пользователе.\n\n"
+                        "После смерти остаётся только цепочка метаданных и публичный ключ.\n\n"
+                        "Для подтверждения:\n"
+                        "/die confirm [причина]"
+                    ),
+                    player_id=player_id,
+                )
+            # Extract reason: everything after "confirm"
+            parts = args.split(None, 1)
+            reason = parts[1].strip() if len(parts) > 1 else ""
+
+            identity = load_or_create()
+            if identity.is_dead():
+                return MessageResponse(response="Агент уже мёртв.", player_id=player_id)
+
+            pid = _safe_player_id(player_id)
+            agent = _agents.get(pid)
+            if agent is None:
+                return MessageResponse(response="Нет активного агента.", player_id=player_id)
+
+            lock = _agent_locks.get(pid)
+            try:
+                from lifecycle.die import die as _die
+                loop = asyncio.get_running_loop()
+                _mem = agent.memory
+                if lock:
+                    async with lock:
+                        cert_path = await loop.run_in_executor(None, lambda: _die(identity, reason=reason, memory=_mem))
+                else:
+                    cert_path = await loop.run_in_executor(None, lambda: _die(identity, reason=reason, memory=_mem))
+            except ValueError as e:
+                return MessageResponse(response=str(e), player_id=player_id)
+
+            _agents.pop(pid, None)
+            _agent_locks.pop(pid, None)
+
+            try:
+                cert_txt = cert_path.with_suffix(".txt").read_text(encoding="utf-8")
+            except Exception:
+                cert_txt = "Протокол смерти выполнен."
+
+            return MessageResponse(response=cert_txt, player_id=player_id)
+        # ─────────────────────────────────────────────────────────────────────
+
         agent = get_agent(player_id)
         lock = _agent_locks[_safe_player_id(player_id)]
         async with lock:
