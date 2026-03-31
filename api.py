@@ -26,6 +26,7 @@ from brain.self_check import SelfCheck
 from brain.state import InternalState
 from brain.upgrade_proposals import UpgradeProposals
 from identity.keypair import check_permissions, load_or_create
+from chain.writer import AGENT_DIR
 
 app = FastAPI()
 
@@ -110,12 +111,31 @@ def _get_player_from_auth(authorization: str | None) -> str:
     return session.player_id
 
 
+
+def _resurrect_after_death() -> None:
+    """Archive dead identity+chain and clear the slate for a fresh agent."""
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    identity_dir = AGENT_DIR / "identity"
+    for name in ("chain.jsonl", "death_certificate.json", "death_certificate.txt"):
+        p = AGENT_DIR / name
+        if p.exists():
+            p.rename(AGENT_DIR / f"{p.stem}.dead_{ts}{p.suffix}")
+    if identity_dir.exists():
+        identity_dir.rename(AGENT_DIR / f"identity.dead_{ts}")
+    print(f"[Resurrect] Archived as identity.dead_{ts} — creating fresh agent.")
+
+
 def _build_agent(player_id: str) -> Agent:
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY is not set")
 
     identity = load_or_create()
+    if identity.is_dead():
+        print("[Resurrect] Dead identity — archiving and creating fresh.")
+        _resurrect_after_death()
+        identity = load_or_create()
     for warn in check_permissions():
         print(warn)
 
@@ -288,25 +308,25 @@ async def send_message(req: MessageRequest, authorization: str | None = Header(d
             parts = args.split(None, 1)
             reason = parts[1].strip() if len(parts) > 1 else ""
 
-            identity = load_or_create()
-            if identity.is_dead():
-                return MessageResponse(response="Агент уже мёртв.", player_id=player_id)
-
             pid = _safe_player_id(player_id)
             agent = _agents.get(pid)
             if agent is None:
                 return MessageResponse(response="Нет активного агента.", player_id=player_id)
 
+            if agent.identity is None or agent.identity.is_dead():
+                return MessageResponse(response="Агент уже мёртв.", player_id=player_id)
+
             lock = _agent_locks.get(pid)
             try:
                 from lifecycle.die import die as _die
                 loop = asyncio.get_running_loop()
+                _identity = agent.identity
                 _mem = agent.memory
                 if lock:
                     async with lock:
-                        cert_path = await loop.run_in_executor(None, lambda: _die(identity, reason=reason, memory=_mem))
+                        cert_path = await loop.run_in_executor(None, lambda: _die(_identity, reason=reason, memory=_mem))
                 else:
-                    cert_path = await loop.run_in_executor(None, lambda: _die(identity, reason=reason, memory=_mem))
+                    cert_path = await loop.run_in_executor(None, lambda: _die(_identity, reason=reason, memory=_mem))
             except ValueError as e:
                 return MessageResponse(response=str(e), player_id=player_id)
 
@@ -353,26 +373,23 @@ async def agent_die(req: DieRequest, authorization: str | None = Header(default=
     player_id = _get_player_from_auth(authorization)
     pid = _safe_player_id(player_id)
 
-    identity = load_or_create()
-    if identity.is_dead():
-        raise HTTPException(status_code=409, detail="agent is already dead")
-
     agent = _agents.get(pid)
     if agent is None:
         raise HTTPException(status_code=404, detail="no active agent for this player")
 
-    lock = _agent_locks.get(pid)
-    async def _run_die():
-        from lifecycle.die import die
-        return die(identity, reason=req.reason or "", memory=agent.memory)
+    if agent.identity is None or agent.identity.is_dead():
+        raise HTTPException(status_code=409, detail="agent is already dead")
 
+    lock = _agent_locks.get(pid)
     loop = asyncio.get_running_loop()
+    _identity = agent.identity
+    _mem = agent.memory
     try:
         if lock:
             async with lock:
-                cert_path = await loop.run_in_executor(None, lambda: __import__("lifecycle.die", fromlist=["die"]).die(identity, reason=req.reason or "", memory=agent.memory))
+                cert_path = await loop.run_in_executor(None, lambda: __import__("lifecycle.die", fromlist=["die"]).die(_identity, reason=req.reason or "", memory=_mem))
         else:
-            cert_path = await loop.run_in_executor(None, lambda: __import__("lifecycle.die", fromlist=["die"]).die(identity, reason=req.reason or "", memory=agent.memory))
+            cert_path = await loop.run_in_executor(None, lambda: __import__("lifecycle.die", fromlist=["die"]).die(_identity, reason=req.reason or "", memory=_mem))
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
