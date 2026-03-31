@@ -113,13 +113,16 @@ def cmd_tail(n: int = 10) -> None:
         etype = entry.get("type", "—")
         content = entry.get("content", {})
         # One-line summary of content
-        summary_parts = []
-        for k, v in content.items():
-            val = str(v)
-            if len(val) > 40:
-                val = val[:37] + "..."
-            summary_parts.append(f"{k}={val}")
-        summary = "  " + ", ".join(summary_parts[:3]) if summary_parts else ""
+        if isinstance(content, str):
+            summary = "  [encrypted]"
+        else:
+            summary_parts = []
+            for k, v in content.items():
+                val = str(v)
+                if len(val) > 40:
+                    val = val[:37] + "..."
+                summary_parts.append(f"{k}={val}")
+            summary = "  " + ", ".join(summary_parts[:3]) if summary_parts else ""
         print(f"{ts}  {eid}  [{etype}]{summary}")
 
 

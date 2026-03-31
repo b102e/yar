@@ -78,6 +78,23 @@ def get_entry_count() -> int:
 
 
 # ---------------------------------------------------------------------------
+
+
+def decrypt_entry_content(identity, entry: dict) -> dict:
+    from identity.encryption import decrypt_line
+    content = entry.get("content")
+    if isinstance(content, str):
+        try:
+            return {**entry, "content": decrypt_line(identity, content.encode("ascii"))}
+        except Exception:
+            return entry
+    return entry
+
+
+def read_entries_decrypted(identity):
+    for entry in read_entries():
+        yield decrypt_entry_content(identity, entry)
+
 # Internal helpers
 # ---------------------------------------------------------------------------
 

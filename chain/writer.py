@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from identity.encryption import encrypt_line
 from identity.keypair import Identity
 from identity.sign import sign
 
@@ -118,12 +119,15 @@ def _write_locked(identity: Identity, content: dict, entry_type: str) -> dict:
             entry_id = _next_id(last_entry)
             timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+            # Encrypt content before signing — stored in base64, never plaintext.
+            # Signature covers the encrypted blob so integrity is still verifiable.
+
             # Build entry without signature first — this is the signing surface
             entry_without_sig: dict[str, Any] = {
                 "id": entry_id,
                 "timestamp": timestamp,
                 "type": entry_type,
-                "content": content,
+                "content": encrypt_line(identity, content).decode("ascii"),
                 "prev_hash": prev_hash,
             }
 
