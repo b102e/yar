@@ -124,7 +124,7 @@ def die(identity, reason: str = "", memory=None) -> Path:
     }, "death")
 
     death_ts = death_entry["timestamp"]
-    total_entries = death_entry["content"]["total_entries"]
+    total_entries = count_before + 1  # content is encrypted, use local value
 
     # ── 2. Death certificates ─────────────────────────────────────────────────
     genesis_ts = "unknown"
