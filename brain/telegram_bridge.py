@@ -7,6 +7,7 @@ Telegram bridge для приватного чата с Яром.
 from __future__ import annotations
 
 import asyncio
+import os
 import json
 from datetime import datetime
 from pathlib import Path
@@ -229,6 +230,9 @@ class TelegramBridge:
         try:
             from lifecycle.die import die
             cert_path = die(self.identity, reason=reason)
+            body = getattr(self.agent, "body", None)
+            if body is not None:
+                await body.fire("subject_dead", {"reason": reason})
             txt = cert_path.with_suffix(".txt").read_text(encoding="utf-8")
             await self._send_message(client, chat_id, txt)
         except Exception as e:
@@ -243,10 +247,17 @@ class TelegramBridge:
         if not chat_id:
             return
         etype = str(event.get("type") or "")
+        if etype == "body_note":
+            # события тела (связь, батарея) — владельцу коротким сообщением
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                await self._send_message(client, chat_id, str(event.get("content") or ""))
+            return
         if etype != "message":
             return
         if str(event.get("role") or "") != "assistant":
             return
+        if event.get("source") == "body" and os.environ.get("TELEGRAM_MIRROR_BODY", "0") != "1":
+            return  # ответ уже прозвучал голосом из тела
         text = str(event.get("content") or "").strip()
         if not text:
             return

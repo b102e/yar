@@ -192,13 +192,28 @@ async def main(telegram_mode: bool = False):
             agent.add_event_sink(telegram_bridge.get_event_sink())
             print(f"📨 Telegram bridge: ON ({'private whitelist' if allowed else 'no chat whitelist'})")
 
+    # ── Тело (робот) — опционально. Робот сам подключается к YAR по WebSocket. ──
+    body_link = None
+    body_token = os.environ.get("BODY_TOKEN", "").strip()
+    if body_token:
+        from embodiment.link import BodyLink
+        body_link = BodyLink(
+            token=body_token,
+            host=os.environ.get("BODY_HOST", "127.0.0.1"),  # наружу — через reverse proxy с TLS
+            port=int(os.environ.get("BODY_PORT", "8765")),
+            subject_pubkey=identity.public_key_hex,
+            is_dead=identity.is_dead,
+        )
+        agent.attach_body(body_link)
+        print(f"🦾 Тело: жду подключения на {body_link.host}:{body_link.port}")
+
     try:
+        tasks = [asyncio.create_task(agent.run(), name="agent")]
         if telegram_bridge:
-            agent_task = asyncio.create_task(agent.run(), name="agent")
-            tg_task = asyncio.create_task(telegram_bridge.run(), name="telegram_bridge")
-            await asyncio.gather(agent_task, tg_task)
-        else:
-            await agent.run()
+            tasks.append(asyncio.create_task(telegram_bridge.run(), name="telegram_bridge"))
+        if body_link:
+            tasks.append(asyncio.create_task(body_link.serve(), name="body_link"))
+        await asyncio.gather(*tasks)
     except (KeyboardInterrupt, asyncio.CancelledError):
         pass
     finally:

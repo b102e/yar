@@ -31,6 +31,8 @@ from brain.timeline_search import TimelineSearch
 from brain.token_logger import TokenLogger
 from brain.self_check import SelfCheck
 from brain.upgrade_proposals import UpgradeProposals
+from embodiment.tools import BODY_RULES, emotion_for_feel
+from embodiment.turn import run_embodied_turn
 
 logger = logging.getLogger(__name__)
 
@@ -255,6 +257,9 @@ class Agent:
         self.emotional_journal = EmotionalJournal(memory.memory_dir, identity=identity)
         self.token_logger   = TokenLogger()
         self.client         = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        self.chat_model     = os.environ.get("YAR_CHAT_MODEL", "claude-sonnet-4-20250514")
+        self.body           = None   # BodyLink, если подключено тело (attach_body)
+        self._current_source = None  # откуда пришла текущая реплика: None (текст) или "body"
         self.in_conversation    = False
         self._last_auto         = time.time()
         self._last_user_text    = ""  # для семантического поиска в _system()
@@ -312,9 +317,40 @@ class Agent:
             except Exception:
                 pass
 
-    async def process_external_text(self, text: str):
-        """Публичный вход для веб/интеграций."""
-        await self._respond(text)
+    async def process_external_text(self, text: str, source: str | None = None):
+        """Публичный вход для веб/интеграций. source="body" — человек сказал это телу голосом."""
+        await self._respond(text, source=source)
+
+    # ── Тело ────────────────────────────────────────────────────────────────
+
+    def attach_body(self, link):
+        """Подключить BodyLink. Тело может появляться и пропадать — агент живёт и без него."""
+        self.body = link
+        link.on_heard(lambda text: self.process_external_text(text, source="body"))
+        link.on_change(self._on_body_change)
+
+    def _on_body_change(self, kind: str, data: dict):
+        """События тела: в подписанную цепочку и владельцу (Telegram)."""
+        if self.identity is not None and not self.identity.is_dead():
+            try:
+                from chain.writer import write_entry
+                write_entry(self.identity, {"event": kind, **data}, "body")
+            except Exception as e:
+                print(f"[Body] chain entry skipped: {e}")
+        important = (kind in ("disconnected", "shutdown", "estop")
+                     or (kind == "connected" and (data.get("offline_sec") or 0) > 300)
+                     or (kind == "battery_level" and data.get("to") in ("low", "critical", "shutdown")))
+        if important and self.body is not None:
+            note = self.body.recent_events[-1][1] if self.body.recent_events else kind
+            self._emit_event({"type": "body_note", "content": f"[тело] {note}"})
+
+    async def _body_say(self, text: str):
+        text = self._strip_commands(text or "").strip()
+        if text and self.body is not None and self.body.connected:
+            try:
+                await self.body.call("say", {"text": text}, timeout=60)
+            except Exception as e:
+                print(f"[Body] say failed: {e}")
 
     async def trigger_action(self, action: str):
         """Публичные веб-действия без запуска LLM."""
@@ -347,11 +383,15 @@ class Agent:
             # Сохраняем финальный файл сессии до внешнего memory.save_final().
             await asyncio.to_thread(self.on_session_end)
 
-    async def _respond(self, user_text: str):
+    async def _respond(self, user_text: str, source: str | None = None):
         async with self._respond_lock:
-            await self._respond_locked(user_text)
+            self._current_source = source
+            try:
+                await self._respond_locked(user_text, source=source)
+            finally:
+                self._current_source = None
 
-    async def _respond_locked(self, user_text: str):
+    async def _respond_locked(self, user_text: str, source: str | None = None):
         print(f"\n[{datetime.now().strftime('%H:%M')}] 🧑 {user_text}")
         self._last_user_text = user_text  # используется в _system() для semantic query
         self.memory.add("user", user_text)
@@ -370,15 +410,36 @@ class Agent:
         self._emit_event({"type": "typing", "active": True})
         try:
             system_prompt = self._system()
-            response = self.client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=400,
-                system=system_prompt,
-                messages=messages,
-            )
-            self.token_logger.log(user_text, system_prompt, messages, response)
-            text = response.content[0].text.strip()
-            await self._handle_response(text)
+            if self.body is not None:
+                system_prompt += "\n" + self.body.prompt_block()
+            if self.body is not None and self.body.connected:
+                system_prompt += "\n" + BODY_RULES
+                from_body = source == "body"
+                text, unspoken, actions = await run_embodied_turn(
+                    self.client, self.chat_model, 400, system_prompt, messages, self.body,
+                    attach_frame=from_body,
+                    on_text=self._body_say if from_body else None,
+                    token_logger=self.token_logger,
+                )
+                if actions:
+                    self.memory.add("assistant", "[тело: " + "; ".join(actions) + "]",
+                                    meta={"body": True})
+                if text:
+                    await self._handle_response(text)
+                if from_body and unspoken:
+                    await self._body_say(unspoken)
+            else:
+                # синхронный SDK — в потоке, чтобы не блокировать event loop
+                response = await asyncio.to_thread(
+                    self.client.messages.create,
+                    model=self.chat_model,
+                    max_tokens=400,
+                    system=system_prompt,
+                    messages=messages,
+                )
+                self.token_logger.log(user_text, system_prompt, messages, response)
+                text = response.content[0].text.strip()
+                await self._handle_response(text)
 
         except Exception as e:
             print(f"[Agent error] {e}")
@@ -509,12 +570,15 @@ class Agent:
             f"Главное желание: {self.state.dominant()}\n"
             f"Последний разговор: {self._ago()}\n"
             f"{'ПЕРВЫЙ ЗАПУСК — познакомься с [USER]ом.' if force else ''}\n"
+            f"{self.body.prompt_block() if self.body is not None else ''}\n"
         )
 
         try:
             auto_messages = [{"role": "user", "content": AUTONOMOUS_PROMPT.format(context=context)}]
-            response = self.client.messages.create(
-                model="claude-haiku-4-5-20251001",
+            # Автономные мысли НЕ получают телесных инструментов: сам по себе Яр не ездит.
+            response = await asyncio.to_thread(
+                self.client.messages.create,
+                model=os.environ.get("YAR_AUTO_MODEL", "claude-haiku-4-5-20251001"),
                 max_tokens=150,
                 messages=auto_messages
             )
@@ -523,6 +587,8 @@ class Agent:
             if text:
                 print(f"\n[{datetime.now().strftime('%H:%M')}] 🤖 (авто) {text}")
                 await self._handle_response(text, autonomous=True)
+                if os.environ.get("BODY_SPEAK_AUTONOMOUS", "0") == "1":
+                    await self._body_say(text)
 
         except Exception as e:
             print(f"[Auto error] {e}")
@@ -535,7 +601,8 @@ class Agent:
 
         if visible_text:
             self.memory.add("assistant", text, meta={"auto": autonomous})
-            self._emit_event({"type": "message", "role": "assistant", "content": visible_text})
+            self._emit_event({"type": "message", "role": "assistant", "content": visible_text,
+                              "source": self._current_source})
 
         for cmd in commands:
             await self._execute_command(cmd)
@@ -587,7 +654,9 @@ class Agent:
                     )
 
             elif "drone" in cmd:
-                print(f"[Drone stub] 🚁 {cmd['drone']} — дрон придёт позже")
+                # Тело пришло вместо дрона: управление через нативные инструменты body_*
+                print(f"[Drone] {cmd['drone']} — используй инструменты body_* (тело "
+                      f"{'подключено' if self.body is not None and self.body.connected else 'не подключено'})")
 
             elif "research" in cmd:
                 if self.research:
@@ -656,6 +725,10 @@ class Agent:
                         note=note,
                         session_ts=session_ts,
                     )
+                    if self.body is not None:
+                        # чувство отражается в глазах тела (если оно есть)
+                        asyncio.create_task(self.body.fire(
+                            "set_emotion", {"emotion": emotion_for_feel(emotion)}))
 
             elif "open_loop" in cmd:
                 payload = cmd.get("open_loop", {})
